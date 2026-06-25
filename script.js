@@ -6,31 +6,34 @@ let vida = 20;
 let moedas = 150;
 let onda = 1;
 let gameOver = false;
-let torreSelecionada = 'padrao'; // 'padrao' ou 'caneta'
+let torreSelecionada = 'padrao'; // 'padrao', 'caneta' ou 'carimbo'
 
-// Configuração dos Botões de Seleção
+// Configuração dos Botões de Seleção (Adicionado o botão do Carimbo)
 const btnPadrao = document.getElementById('btn-padrao');
 const btnCaneta = document.getElementById('btn-caneta');
+const btnCarimbo = document.getElementById('btn-carimbo');
 
 btnPadrao.addEventListener('click', () => mudarTorre('padrao'));
 btnCaneta.addEventListener('click', () => mudarTorre('caneta'));
+if (btnCarimbo) btnCarimbo.addEventListener('click', () => mudarTorre('carimbo'));
 
 function mudarTorre(tipo) {
     torreSelecionada = tipo;
     btnPadrao.classList.toggle('ativo', tipo === 'padrao');
     btnCaneta.classList.toggle('ativo', tipo === 'caneta');
+    if (btnCarimbo) btnCarimbo.classList.toggle('ativo', tipo === 'carimbo');
 }
 
 // Configuração do Caminho dos Inimigos
 const caminho = [
-    {x: 0, y: 300},
-    {x: 200, y: 300},
-    {x: 200, y: 100},
-    {x: 500, y: 100},
-    {x: 500, y: 500},
-    {x: 700, y: 500},
-    {x: 700, y: 300},
-    {x: 800, y: 300}
+    { x: 0, y: 300 },
+    { x: 200, y: 300 },
+    { x: 200, y: 100 },
+    { x: 500, y: 100 },
+    { x: 500, y: 500 },
+    { x: 700, y: 500 },
+    { x: 700, y: 300 },
+    { x: 800, y: 300 }
 ];
 
 // Listas de Entidades do Jogo
@@ -149,12 +152,12 @@ class InimigoDebuff extends Inimigo {
         // Corpo quadrado roxo do inimigo
         ctx.fillStyle = this.lento ? "#6600cc" : "#9933ff";
         ctx.fillRect(this.x, this.y, 20, 20);
-        
+
         // Bordas marcantes para identificação
         ctx.strokeStyle = "#fff";
         ctx.lineWidth = 1;
         ctx.strokeRect(this.x, this.y, 20, 20);
-        
+
         this.desenharBarraVida();
     }
 }
@@ -166,24 +169,49 @@ class Torre {
         this.y = y;
         this.tipo = tipo;
         this.raio = 20;
-        this.nivel = 1; 
-        
-        this.alcanceBase = tipo === 'caneta' ? 150 : 120;
-        this.cadenciaBase = tipo === 'caneta' ? 60 : 30;
-        this.cooldown = 0;
-        this.desacelerada = false; 
+        this.nivel = 1;
 
-        // Contador exclusivo para a habilidade especial da caneta lvl 5
+        // Configurações base por tipo de torre
+        if (tipo === 'caneta') {
+            this.alcanceBase = 150;
+            this.cadenciaBase = 60;
+        } else if (tipo === 'carimbo') {
+            this.alcanceBase = 100; // Menor alcance por ser em área massiva
+            this.cadenciaBase = 80;  // Ataque mais lento e pesado
+        } else {
+            this.alcanceBase = 120; // Padrão / Laser
+            this.cadenciaBase = 30;
+        }
+
+        this.cooldown = 0;
+        this.desacelerada = false;
+
+        // Atributos de controle visual e mecânico do Carimbo
+        this.raioExplosaoAnimacao = 0;
+        this.exibirExplosao = false;
+        this.explosaoX = 0;
+        this.explosaoY = 0;
+
+        // Contador exclusivo para a habilidade especial da caneta lvl 5+
         this.contadorTirosCaneta = 0;
     }
 
     get alcance() {
-        return this.alcanceBase * (1 + (this.nivel - 1) * 0.2);
+        // Escala o alcance linearmente com base no nível atual (máximo Lvl 7)
+        return this.alcanceBase * (1 + (this.nivel - 1) * 0.18);
     }
 
     get cadencia() {
-        let cadenciaAtual = Math.max(10, Math.round(this.cadenciaBase * (1 - (this.nivel - 1) * 0.1)));
+        // Melhora a velocidade de ataque a cada upgrade
+        let cadenciaAtual = Math.max(8, Math.round(this.cadenciaBase * (1 - (this.nivel - 1) * 0.12)));
         return this.desacelerada ? cadenciaAtual * 2 : cadenciaAtual;
+    }
+
+    get dano() {
+        // Dano base escalável por nível
+        if (this.tipo === 'carimbo') return 25 * (1 + (this.nivel - 1) * 0.45);
+        if (this.tipo === 'caneta') return 10 * (1 + (this.nivel - 1) * 0.35);
+        return 15 * (1 + (this.nivel - 1) * 0.3); // Laser
     }
 
     atualizar() {
@@ -195,19 +223,86 @@ class Torre {
                 let dist = Math.sqrt(dx * dx + dy * dy);
                 if (dist < inimigo.raioDebuff) {
                     this.desacelerada = true;
-                    break; 
+                    break;
                 }
             }
         }
 
         if (this.cooldown > 0) this.cooldown--;
 
-        if (this.cooldown === 0) {
-            let alvos = [];
-            let menorDistancia = this.alcance;
+        // Atualiza a animação de expansão do impacto do Carimbo
+        if (this.exibirExplosao) {
+            let raioMaximo = this.nivel >= 7 ? 120 : (this.nivel >= 5 ? 90 : 60);
+            this.raioExplosaoAnimacao += 5;
+            if (this.raioExplosaoAnimacao >= raioMaximo) {
+                this.exibirExplosao = false;
+                this.raioExplosaoAnimacao = 0;
+            }
+        }
 
-            // Habilidade Laser Lvl 5: Tiro Duplo (busca até 2 alvos)
-            let maxAlvos = (this.tipo === 'padrao' && this.nivel >= 5) ? 2 : 1;
+        if (this.cooldown === 0) {
+            // --- LÓGICA DE ATAQUE DA TORRE DE CARIMBO (AoE - Níveis 1 a 7) ---
+            if (this.tipo === 'carimbo') {
+                let alvoPrincipal = null;
+                let menorDistancia = this.alcance;
+
+                for (let inimigo of inimigos) {
+                    let dx = inimigo.x + 10 - this.x;
+                    let dy = inimigo.y + 10 - this.y;
+                    let dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < menorDistancia) {
+                        menorDistancia = dist;
+                        alvoPrincipal = inimigo;
+                    }
+                }
+
+                if (alvoPrincipal) {
+                    this.explosaoX = alvoPrincipal.x + 10;
+                    this.explosaoY = alvoPrincipal.y + 10;
+                    let raioImpacto = this.nivel >= 7 ? 120 : (this.nivel >= 5 ? 90 : 60); 
+                    this.exibirExplosao = true;
+                    this.raioExplosaoAnimacao = 0;
+
+                    for (let i = inimigos.length - 1; i >= 0; i--) {
+                        let inimigo = inimigos[i];
+                        let dx = (inimigo.x + 10) - this.explosaoX;
+                        let dy = (inimigo.y + 10) - this.explosaoY;
+                        let dist = Math.sqrt(dx * dx + dy * dy);
+
+                        if (dist < raioImpacto) {
+                            let danoAplicado = this.dano;
+                            
+                            if (this.nivel === 5 || this.nivel === 6) danoAplicado *= 1.5; 
+                            if (this.nivel >= 7) danoAplicado *= 2.0; // Multiplicador massivo no Lvl 7
+
+                            inimigo.vida -= danoAplicado;
+
+                            // EVOLUÇÃO CARIMBO LVL 7: Efeito de Stun (Paralisação)
+                            if (this.nivel >= 7) {
+                                inimigo.velocidade = 0; 
+                            }
+
+                            if (inimigo.vida <= 0) {
+                                moedas += inimigo.recompensa;
+                                document.getElementById("moedas").innerText = moedas;
+                                inimigos.splice(i, 1);
+                            }
+                        }
+                    }
+                    this.cooldown = this.cadencia;
+                }
+                return;
+            }
+
+            // --- LÓGICA DE PROJÉTEIS (LASER E CANETA - Níveis 1 a 7) ---
+            let alvos = [];
+            
+            // EVOLUÇÃO LASER LVL 5 a 7: Alvos simultâneos aumentam
+            let maxAlvos = 1;
+            if (this.tipo === 'padrao') {
+                if (this.nivel >= 7) maxAlvos = 3;      // Lvl 7 foca até 3 alvos ao mesmo tempo
+                else if (this.nivel >= 5) maxAlvos = 2; // Lvl 5 e 6 focam 2 alvos
+            }
 
             let inimigosNoAlcance = [];
             for (let inimigo of inimigos) {
@@ -239,20 +334,20 @@ class Torre {
                 }
             }
 
-            // Dispara os projéteis com base nos alvos encontrados
             if (alvos.length > 0) {
                 if (this.tipo === 'caneta' && this.nivel >= 5) {
                     this.contadorTirosCaneta++;
                     
-                    // A cada 5 tiros, solta a Caneta Gigante (Especial)
-                    if (this.contadorTirosCaneta >= 5) {
+                    // EVOLUÇÃO CANETA LVL 7: Dispara o especial mais rápido (a cada 4 tiros em vez de 5)
+                    let tirosParaEspecial = this.nivel >= 7 ? 4 : 5;
+
+                    if (this.contadorTirosCaneta >= tirosParaEspecial) {
                         projeteis.push(new Projetil(this.x, this.y, alvos[0], 'caneta_gigante', this.nivel));
-                        this.contadorTirosCaneta = 0; // Reseta o contador
+                        this.contadorTirosCaneta = 0;
                     } else {
                         projeteis.push(new Projetil(this.x, this.y, alvos[0], this.tipo, this.nivel));
                     }
                 } else {
-                    // Disparo normal para Laser ou Caneta de nível baixo
                     alvos.forEach((alvo, index) => {
                         projeteis.push(new Projetil(this.x, this.y, alvo, this.tipo, this.nivel, index));
                     });
@@ -263,37 +358,81 @@ class Torre {
     }
 
     desenhar() {
+        // Alcance visual
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.alcance, 0, Math.PI * 2);
         ctx.fillStyle = "rgba(255, 255, 255, 0.02)";
         ctx.fill();
 
+        // Explosão do Carimbo
+        if (this.exibirExplosao && this.tipo === 'carimbo') {
+            ctx.beginPath();
+            ctx.arc(this.explosaoX, this.explosaoY, this.raioExplosaoAnimacao, 0, Math.PI * 2);
+            if (this.nivel >= 7) {
+                ctx.fillStyle = "rgba(123, 31, 162, 0.3)"; // Onda roxa cósmica no Lvl 7
+                ctx.strokeStyle = "rgba(123, 31, 162, 0.8)";
+            } else {
+                ctx.fillStyle = this.nivel >= 5 ? "rgba(255, 0, 0, 0.25)" : "rgba(139, 195, 74, 0.3)";
+                ctx.strokeStyle = this.nivel >= 5 ? "rgba(255, 0, 0, 0.6)" : "rgba(139, 195, 74, 0.7)";
+            }
+            ctx.lineWidth = 2;
+            ctx.fill();
+            ctx.stroke();
+        }
+
+        // Base física da torre
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.raio, 0, Math.PI * 2);
-        
+
         if (this.tipo === 'caneta') {
-            // Caneta Nível 5 ganha uma cor azul Royal brilhante com bordas douradas de tier lendário
-            ctx.fillStyle = this.nivel >= 5 ? "#0011aa" : "#0044ff";
+            if (this.nivel >= 7) ctx.fillStyle = "#1a237e";      // Azul Escuro Presidencial
+            else if (this.nivel >= 5) ctx.fillStyle = "#0011aa"; // Azul Royal
+            else ctx.fillStyle = "#0044ff";
             ctx.fill();
-            ctx.strokeStyle = this.desacelerada ? "#9933ff" : (this.nivel >= 5 ? "#ffd700" : "#fff"); 
+
+            ctx.strokeStyle = this.desacelerada ? "#9933ff" : (this.nivel >= 7 ? "#00e5ff" : (this.nivel >= 5 ? "#ffd700" : "#fff"));
             ctx.lineWidth = (this.desacelerada || this.nivel >= 5) ? 3 : 1;
             ctx.stroke();
-            
-            ctx.fillStyle = this.nivel >= 5 ? "#ffd700" : "#fff";
-            ctx.fillRect(this.x - 4, this.y - 15, 8, 12);
-        } else {
-            ctx.fillStyle = this.nivel >= 5 ? "#ff9900" : "#3399ff";
+
+            ctx.fillStyle = this.nivel >= 7 ? "#00e5ff" : "#fff";
+            ctx.fillRect(this.x - 4, this.y - 16, 8, 12);
+
+        } else if (this.tipo === 'carimbo') {
+            if (this.nivel >= 7) ctx.fillStyle = "#4a148c";      // Roxo Prensa Industrial
+            else if (this.nivel >= 5) ctx.fillStyle = "#b71c1c"; // Vermelho Escuro
+            else ctx.fillStyle = "#e53935";
             ctx.fill();
-            ctx.strokeStyle = this.desacelerada ? "#9933ff" : (this.nivel >= 5 ? "#ffff00" : "#fff"); 
+
+            ctx.strokeStyle = this.desacelerada ? "#9933ff" : (this.nivel >= 7 ? "#00ff88" : (this.nivel >= 5 ? "#ffd700" : "#ffcdd2"));
+            ctx.lineWidth = (this.desacelerada || this.nivel >= 5) ? 3 : 1;
+            ctx.stroke();
+
+            ctx.fillStyle = this.nivel >= 7 ? "#00ff88" : "#424242";
+            ctx.fillRect(this.x - 6, this.y - 15, 12, 6);
+
+        } else { // Laser / Padrão
+            if (this.nivel >= 7) {
+                ctx.fillStyle = "#00e676"; // Verde Plasma Radiante
+            } else if (this.nivel >= 5) {
+                ctx.fillStyle = "#ff9900"; // Laranja Laser
+            } else {
+                ctx.fillStyle = "#3399ff"; // Azul Base
+            }
+            ctx.fill();
+
+            ctx.strokeStyle = this.desacelerada ? "#9933ff" : (this.nivel >= 7 ? "#b9f6ca" : (this.nivel >= 5 ? "#ffff00" : "#fff"));
             ctx.lineWidth = (this.desacelerada || this.nivel >= 5) ? 3 : 1;
             ctx.stroke();
         }
 
-        ctx.fillStyle = "#000000ff";
-        ctx.font = "bold 12px Arial";
+        // Texto do Nível adaptado para exibir "MAX" no nível 7
+        ctx.fillStyle = this.nivel >= 7 ? "#ffffff" : "#000000";
+        ctx.font = "bold 11px Arial";
         ctx.textAlign = "center";
-        ctx.fillText("Lvl " + this.nivel, this.x, this.y + 5);
+        let textoNivel = this.nivel >= 7 ? "MAX" : "Lvl " + this.nivel;
+        ctx.fillText(textoNivel, this.x, this.y + 4);
     }
+
 }
 
 // Classe do Projétil adaptada para a Caneta Gigante com tempo de vida de 5 segundos
@@ -305,21 +444,21 @@ class Projetil {
         this.tipo = tipo;
         this.indexTiro = indexTiro;
         this.nivelTorre = nivelTorre;
-        
+
         let danoBase = (tipo === 'caneta' || tipo === 'caneta_gigante') ? 8 : 15;
         this.dano = danoBase * (1 + (nivelTorre - 1) * 0.3);
 
         if (tipo === 'caneta_gigante') {
             this.velocidade = 4; // Move-se um pouco mais devagar para cobrir a área deixando tinta
             this.duracao = 300;  // 5 segundos exatos ativos em campo rodando a 60 FPS
-            
+
             // Salva a direção inicial para continuar avançando em linha reta mesmo se o alvo morrer
             let dx = (alvo.x + 10) - x;
             let dy = (alvo.y + 10) - y;
             let dist = Math.sqrt(dx * dx + dy * dy);
             this.vx = (dx / dist) * this.velocidade;
             this.vy = (dy / dist) * this.velocidade;
-            
+
             // Lista para registrar quais inimigos já foram atingidos (evita dar dano em todo frame)
             this.inimigosAtingidos = new Set();
         } else {
@@ -351,7 +490,7 @@ class Projetil {
                 let dist = Math.sqrt(dx * dx + dy * dy);
 
                 // Colisão baseada em área maior por ser um projétil gigante
-                if (dist < 25) { 
+                if (dist < 25) {
                     inimigo.vida -= this.dano * 1.5; // Dano extra por impacto maciço
                     this.inimigosAtingidos.add(inimigo);
 
@@ -406,14 +545,14 @@ class Projetil {
     desenhar() {
         ctx.save();
         ctx.beginPath();
-        
+
         if (this.tipo === 'caneta_gigante') {
             // Desenho estilizado de uma Caneta enorme cruzando a tela
             ctx.translate(this.x, this.y);
             // Rotaciona o desenho na direção do movimento vetorial
             let angulo = Math.atan2(this.vy, this.vx);
             ctx.rotate(angulo);
-            
+
             // Corpo da caneta azul gigante
             ctx.fillStyle = "#0022ff";
             ctx.fillRect(-25, -6, 40, 12);
@@ -421,7 +560,7 @@ class Projetil {
             // Tampa/Ponta da caneta
             ctx.fillStyle = "#001166";
             ctx.fillRect(15, -6, 10, 12);
-            
+
             // Brilho metálico da ponta
             ctx.fillStyle = "#ffffff";
             ctx.fillRect(25, -3, 4, 6);
@@ -475,7 +614,10 @@ canvas.addEventListener("click", (evento) => {
         let distacaoCliqueTorre = Math.sqrt(dx * dx + dy * dy);
 
         if (distacaoCliqueTorre <= torre.raio) {
-            let custoUpgrade = torre.nivel * 40; 
+            // Trava o upgrade se a torre já atingiu o patamar MAX (Lvl 7)
+            if (torre.nivel >= 7) return; 
+
+            let custoUpgrade = torre.nivel * 40;
             if (moedas >= custoUpgrade) {
                 moedas -= custoUpgrade;
                 torre.nivel += 1;
@@ -485,8 +627,10 @@ canvas.addEventListener("click", (evento) => {
         }
     }
 
-    // 2. Tenta CONSTRUIR se clicou em espaço vazio
-    let custoConstrucao = torreSelecionada === 'caneta' ? 75 : 50;
+    // 2. Tenta CONSTRUIR se clicou em espaço vazio (Preços: Laser 50, Caneta 75, Carimbo 120)
+    let custoConstrucao = 50;
+    if (torreSelecionada === 'caneta') custoConstrucao = 75;
+    else if (torreSelecionada === 'carimbo') custoConstrucao = 120;
 
     if (moedas >= custoConstrucao) {
         let colisaoDetectada = false;
@@ -544,6 +688,7 @@ canvas.addEventListener("click", (evento) => {
     }
 });
 
+
 // Loop Principal do Jogo
 function loop() {
     if (vida <= 0) {
@@ -575,7 +720,7 @@ function loop() {
         if (contadorSpawn >= spawnIntervalo) {
             let vidaCalculada = 30 + onda * 12;
             if (onda >= 2 && Math.random() < 0.30) {
-                inimigos.push(new InimigoDebuff(vidaCalculada * 1.2)); 
+                inimigos.push(new InimigoDebuff(vidaCalculada * 1.2));
             } else {
                 inimigos.push(new Inimigo(vidaCalculada));
             }
