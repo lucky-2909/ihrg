@@ -66,7 +66,7 @@ class PocaTinta {
     }
 }
 
-// Classe do Inimigo
+// Classe Base do Inimigo Padrão (Vermelho)
 class Inimigo {
     constructor(vidaMax) {
         this.x = caminho[0].x;
@@ -78,6 +78,7 @@ class Inimigo {
         this.pontoAlvo = 1;
         this.recompensa = 15;
         this.lento = false;
+        this.tipo = 'comum';
     }
 
     atualizar() {
@@ -115,7 +116,10 @@ class Inimigo {
     desenhar() {
         ctx.fillStyle = this.lento ? "#3399ff" : "#ff3333";
         ctx.fillRect(this.x, this.y, 20, 20);
-        
+        this.desenharBarraVida();
+    }
+
+    desenharBarraVida() {
         ctx.fillStyle = "#555";
         ctx.fillRect(this.x, this.y - 8, 20, 4);
         ctx.fillStyle = "#00ff00";
@@ -124,7 +128,38 @@ class Inimigo {
     }
 }
 
-// Classe da Torre com Sistema de Upgrades
+// NOVO INIMIGO: Quadrado Roxo que desacelera o carregamento das torres próximas
+class InimigoDebuff extends Inimigo {
+    constructor(vidaMax) {
+        super(vidaMax);
+        this.velocidadeBase = 1.3; // Um pouco mais lento por carregar peso técnico
+        this.velocidade = 1.3;
+        this.recompensa = 25; // Recompensa maior por ser perigoso
+        this.raioDebuff = 100; // Distância da aura de lentidão de ataque
+        this.tipo = 'debuff';
+    }
+
+    desenhar() {
+        // Desenha a aura visual do efeito de desaceleração ao redor dele
+        ctx.beginPath();
+        ctx.arc(this.x + 10, this.y + 10, this.raioDebuff, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(153, 51, 255, 0.07)";
+        ctx.fill();
+
+        // Corpo quadrado roxo do inimigo
+        ctx.fillStyle = this.lento ? "#6600cc" : "#9933ff";
+        ctx.fillRect(this.x, this.y, 20, 20);
+        
+        // Bordas marcantes para identificação
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(this.x, this.y, 20, 20);
+        
+        this.desenharBarraVida();
+    }
+}
+
+// Classe da Torre com Upgrades, Tiro Duplo (Laser Lvl 5) e Caneta Gigante (Caneta Lvl 5)
 class Torre {
     constructor(x, y, tipo) {
         this.x = x;
@@ -136,6 +171,10 @@ class Torre {
         this.alcanceBase = tipo === 'caneta' ? 150 : 120;
         this.cadenciaBase = tipo === 'caneta' ? 60 : 30;
         this.cooldown = 0;
+        this.desacelerada = false; 
+
+        // Contador exclusivo para a habilidade especial da caneta lvl 5
+        this.contadorTirosCaneta = 0;
     }
 
     get alcance() {
@@ -143,42 +182,81 @@ class Torre {
     }
 
     get cadencia() {
-        return Math.max(10, Math.round(this.cadenciaBase * (1 - (this.nivel - 1) * 0.1)));
+        let cadenciaAtual = Math.max(10, Math.round(this.cadenciaBase * (1 - (this.nivel - 1) * 0.1)));
+        return this.desacelerada ? cadenciaAtual * 2 : cadenciaAtual;
     }
 
     atualizar() {
+        this.desacelerada = false;
+        for (let inimigo of inimigos) {
+            if (inimigo.tipo === 'debuff') {
+                let dx = (inimigo.x + 10) - this.x;
+                let dy = (inimigo.y + 10) - this.y;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < inimigo.raioDebuff) {
+                    this.desacelerada = true;
+                    break; 
+                }
+            }
+        }
+
         if (this.cooldown > 0) this.cooldown--;
 
         if (this.cooldown === 0) {
-            let alvo = null;
+            let alvos = [];
             let menorDistancia = this.alcance;
 
+            // Habilidade Laser Lvl 5: Tiro Duplo (busca até 2 alvos)
+            let maxAlvos = (this.tipo === 'padrao' && this.nivel >= 5) ? 2 : 1;
+
+            let inimigosNoAlcance = [];
             for (let inimigo of inimigos) {
                 let dx = inimigo.x + 10 - this.x;
                 let dy = inimigo.y + 10 - this.y;
                 let dist = Math.sqrt(dx * dx + dy * dy);
 
-                if (dist < menorDistancia) {
-                    if (this.tipo === 'caneta' && inimigo.lento) continue;
-                    menorDistancia = dist;
-                    alvo = inimigo;
+                if (dist < this.alcance) {
+                    if (this.tipo === 'caneta' && inimigo.lento && this.nivel < 5) continue;
+                    inimigosNoAlcance.push({ inimigo: inimigo, dist: dist });
                 }
             }
 
-            if (!alvo && this.tipo === 'caneta') {
+            inimigosNoAlcance.sort((a, b) => a.dist - b.dist);
+
+            for (let i = 0; i < Math.min(maxAlvos, inimigosNoAlcance.length); i++) {
+                alvos.push(inimigosNoAlcance[i].inimigo);
+            }
+
+            if (alvos.length === 0 && this.tipo === 'caneta') {
                 for (let inimigo of inimigos) {
                     let dx = inimigo.x + 10 - this.x;
                     let dy = inimigo.y + 10 - this.y;
                     let dist = Math.sqrt(dx * dx + dy * dy);
                     if (dist < this.alcance) {
-                        alvo = inimigo;
+                        alvos.push(inimigo);
                         break;
                     }
                 }
             }
 
-            if (alvo) {
-                projeteis.push(new Projetil(this.x, this.y, alvo, this.tipo, this.nivel));
+            // Dispara os projéteis com base nos alvos encontrados
+            if (alvos.length > 0) {
+                if (this.tipo === 'caneta' && this.nivel >= 5) {
+                    this.contadorTirosCaneta++;
+                    
+                    // A cada 5 tiros, solta a Caneta Gigante (Especial)
+                    if (this.contadorTirosCaneta >= 5) {
+                        projeteis.push(new Projetil(this.x, this.y, alvos[0], 'caneta_gigante', this.nivel));
+                        this.contadorTirosCaneta = 0; // Reseta o contador
+                    } else {
+                        projeteis.push(new Projetil(this.x, this.y, alvos[0], this.tipo, this.nivel));
+                    }
+                } else {
+                    // Disparo normal para Laser ou Caneta de nível baixo
+                    alvos.forEach((alvo, index) => {
+                        projeteis.push(new Projetil(this.x, this.y, alvo, this.tipo, this.nivel, index));
+                    });
+                }
                 this.cooldown = this.cadencia;
             }
         }
@@ -194,16 +272,20 @@ class Torre {
         ctx.arc(this.x, this.y, this.raio, 0, Math.PI * 2);
         
         if (this.tipo === 'caneta') {
-            ctx.fillStyle = "#0044ff";
+            // Caneta Nível 5 ganha uma cor azul Royal brilhante com bordas douradas de tier lendário
+            ctx.fillStyle = this.nivel >= 5 ? "#0011aa" : "#0044ff";
             ctx.fill();
-            ctx.strokeStyle = "#fff";
+            ctx.strokeStyle = this.desacelerada ? "#9933ff" : (this.nivel >= 5 ? "#ffd700" : "#fff"); 
+            ctx.lineWidth = (this.desacelerada || this.nivel >= 5) ? 3 : 1;
             ctx.stroke();
-            ctx.fillStyle = "#fff";
+            
+            ctx.fillStyle = this.nivel >= 5 ? "#ffd700" : "#fff";
             ctx.fillRect(this.x - 4, this.y - 15, 8, 12);
         } else {
-            ctx.fillStyle = "#3399ff";
+            ctx.fillStyle = this.nivel >= 5 ? "#ff9900" : "#3399ff";
             ctx.fill();
-            ctx.strokeStyle = "#fff";
+            ctx.strokeStyle = this.desacelerada ? "#9933ff" : (this.nivel >= 5 ? "#ffff00" : "#fff"); 
+            ctx.lineWidth = (this.desacelerada || this.nivel >= 5) ? 3 : 1;
             ctx.stroke();
         }
 
@@ -214,20 +296,84 @@ class Torre {
     }
 }
 
-// Classe do Projétil
+// Classe do Projétil adaptada para a Caneta Gigante com tempo de vida de 5 segundos
 class Projetil {
-    constructor(x, y, alvo, tipo, nivelTorre) {
+    constructor(x, y, alvo, tipo, nivelTorre, indexTiro = 0) {
         this.x = x;
         this.y = y;
         this.alvo = alvo;
         this.tipo = tipo;
-        this.velocidade = 8;
+        this.indexTiro = indexTiro;
+        this.nivelTorre = nivelTorre;
         
-        let danoBase = tipo === 'caneta' ? 8 : 15;
+        let danoBase = (tipo === 'caneta' || tipo === 'caneta_gigante') ? 8 : 15;
         this.dano = danoBase * (1 + (nivelTorre - 1) * 0.3);
+
+        if (tipo === 'caneta_gigante') {
+            this.velocidade = 4; // Move-se um pouco mais devagar para cobrir a área deixando tinta
+            this.duracao = 300;  // 5 segundos exatos ativos em campo rodando a 60 FPS
+            
+            // Salva a direção inicial para continuar avançando em linha reta mesmo se o alvo morrer
+            let dx = (alvo.x + 10) - x;
+            let dy = (alvo.y + 10) - y;
+            let dist = Math.sqrt(dx * dx + dy * dy);
+            this.vx = (dx / dist) * this.velocidade;
+            this.vy = (dy / dist) * this.velocidade;
+            
+            // Lista para registrar quais inimigos já foram atingidos (evita dar dano em todo frame)
+            this.inimigosAtingidos = new Set();
+        } else {
+            this.velocidade = 8;
+        }
     }
 
     atualizar() {
+        // Lógica de Atualização da Caneta Gigante Especial (Baseada em tempo e perfuração)
+        if (this.tipo === 'caneta_gigante') {
+            this.duracao--;
+            if (this.duracao <= 0) return false;
+
+            // Move-se continuamente na trajetória calculada
+            this.x += this.vx;
+            this.y += this.vy;
+
+            // Deixa um rastro contínuo de poças grudentas a cada 10 frames de deslocamento
+            if (this.duracao % 10 === 0) {
+                pocosTinta.push(new PocaTinta(this.x, this.y));
+            }
+
+            // Varre colisões com múltiplos inimigos (Atravessa alvos causando dano único)
+            for (let inimigo of inimigos) {
+                if (this.inimigosAtingidos.has(inimigo)) continue;
+
+                let dx = (inimigo.x + 10) - this.x;
+                let dy = (inimigo.y + 10) - this.y;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+
+                // Colisão baseada em área maior por ser um projétil gigante
+                if (dist < 25) { 
+                    inimigo.vida -= this.dano * 1.5; // Dano extra por impacto maciço
+                    this.inimigosAtingidos.add(inimigo);
+
+                    if (inimigo.vida <= 0) {
+                        let index = inimigos.indexOf(inimigo);
+                        if (index > -1) {
+                            moedas += inimigo.recompensa;
+                            document.getElementById("moedas").innerText = moedas;
+                            inimigos.splice(index, 1);
+                        }
+                    }
+                }
+            }
+
+            // Apaga o projétil se ele sair totalmente das bordas visíveis do canvas
+            if (this.x < -50 || this.x > canvas.width + 50 || this.y < -50 || this.y > canvas.height + 50) {
+                return false;
+            }
+            return true;
+        }
+
+        // Lógica Padrão de Projéteis Guiados de Alvo Único
         if (!inimigos.includes(this.alvo)) return false;
 
         let dx = (this.alvo.x + 10) - this.x;
@@ -258,15 +404,42 @@ class Projetil {
     }
 
     desenhar() {
+        ctx.save();
         ctx.beginPath();
-        if (this.tipo === 'caneta') {
+        
+        if (this.tipo === 'caneta_gigante') {
+            // Desenho estilizado de uma Caneta enorme cruzando a tela
+            ctx.translate(this.x, this.y);
+            // Rotaciona o desenho na direção do movimento vetorial
+            let angulo = Math.atan2(this.vy, this.vx);
+            ctx.rotate(angulo);
+            
+            // Corpo da caneta azul gigante
+            ctx.fillStyle = "#0022ff";
+            ctx.fillRect(-25, -6, 40, 12);
+            // Tampa/Ponta da caneta
+            // Tampa/Ponta da caneta
+            ctx.fillStyle = "#001166";
+            ctx.fillRect(15, -6, 10, 12);
+            
+            // Brilho metálico da ponta
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(25, -3, 4, 6);
+        } else if (this.tipo === 'caneta') {
             ctx.rect(this.x - 2, this.y - 6, 4, 12);
             ctx.fillStyle = "#00bfff";
+            ctx.fill();
         } else {
-            ctx.arc(this.x, this.y, 4, 0, Math.PI * 2);
-            ctx.fillStyle = "#ffff00";
+            if (this.indexTiro === 1) {
+                ctx.arc(this.x + 4, this.y + 4, 3, 0, Math.PI * 2);
+                ctx.fillStyle = "#ffcc00";
+            } else {
+                ctx.arc(this.x, this.y, 4, 0, Math.PI * 2);
+                ctx.fillStyle = "#ffff00";
+            }
+            ctx.fill();
         }
-        ctx.fill();
+        ctx.restore();
     }
 }
 
@@ -396,11 +569,16 @@ function loop() {
         }
     }
 
-    // Controle de Ondas (Waves)
+    // Controle de Ondas (Waves) e Sorteio de Tipo de Inimigo
     if (inimigosParaSpawnar > 0) {
         contadorSpawn++;
         if (contadorSpawn >= spawnIntervalo) {
-            inimigos.push(new Inimigo(30 + onda * 12));
+            let vidaCalculada = 30 + onda * 12;
+            if (onda >= 2 && Math.random() < 0.30) {
+                inimigos.push(new InimigoDebuff(vidaCalculada * 1.2)); 
+            } else {
+                inimigos.push(new Inimigo(vidaCalculada));
+            }
             inimigosParaSpawnar--;
             contadorSpawn = 0;
         }
