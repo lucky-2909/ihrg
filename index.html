@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tower Defense - Caneta Azul</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div id="painel">
+        Vida: <span id="vida">20</span> | 
+        Moedas: $<span id="moedas">150</span> | 
+        Onda: <span id="onda">1</span>
+    </div>
+
+    <div id="seletor-torres">
+        <button id="btn-padrao" class="botao-torre ativo">Torre Laser ($50)</button>
+        <button id="btn-caneta" class="botao-torre">🖋️ Caneta Azul ($75)</button>
+    </div>
+
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    
+    <p class="instrucoes">
+    <strong>Construir:</strong> Selecione o tipo acima e clique na grama.<br>
+    <strong>Melhorar (Upgrade):</strong> Clique em uma torre já construída (Custo: Nível x $40).
+</p>
+
+    <script src="script.js"></script>
+</body>
+</html>
