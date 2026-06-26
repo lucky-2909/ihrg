@@ -1,33 +1,59 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tower Defense - Caneta Azul</title>
+    <title>Tower Defense - Fullscreen Edition</title>
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
 
-    <div id="painel">
-        Vida: <span id="vida">20</span> | 
-        Moedas: $<span id="moedas">150</span> | 
-        Onda: <span id="onda">1</span>
+    <!-- Painel de Status Superior e Gerenciamento de Tempo -->
+    <div id="painel-superior">
+        <div class="status-item">❤️ Vida: <span id="vida">20</span></div>
+        <div class="status-item">🪙 Moedas: <span id="moedas">150</span></div>
+        <div class="status-item">⚔️ Onda: <span id="onda">1</span></div>
+        <div class="divisor"></div>
+        <button id="btn-pausa" class="btn-controle">⏸️ Pausar</button>
+        <button id="btn-velocidade" class="btn-controle">⏩ Velocidade 1x</button>
     </div>
 
-    <div id="seletor-torres">
-        <button id="btn-padrao" class="botao-torre ativo">Torre Laser ($50)</button>
-        <button id="btn-caneta" class="botao-torre">🖋️ Caneta Azul ($75)</button>
-        <button id="btn-carimbo" class="botao-torre">💮 Carimbo ($120)</button>
-    
+    <!-- Tela Cheia de Renderização do Jogo -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Menu Lateral de Seleção de Unidades -->
+    <div id="menu-torres">
+        <button id="btn-padrao" class="btn-torre ativo"><span>⚡</span>Laser<br>50g</button>
+        <button id="btn-caneta" class="btn-torre"><span>✒️</span>Caneta<br>75g</button>
+        <button id="btn-carimbo" class="btn-torre"><span>🟥</span>Carimbo<br>120g</button>
+        <button id="btn-ronin" class="btn-torre"><span>🥷</span>Ronin<br>85g</button>
+        <button id="btn-pingpong" class="btn-torre"><span>🏓</span>Ping-Pong<br>85g</button>
+        <button id="btn-djnecromante" class="btn-torre"><span>🎧</span>DJ Necro<br>110g</button>
+        <button id="btn-financeira" class="btn-torre"><span>🪙</span>Banco<br>100g</button>
+        <button id="btn-clerigo" class="btn-torre"><span>⛪</span>Clérigo<br>125g</button>
     </div>
 
-    <canvas id="gameCanvas" width="800" height="600"></canvas>
-    
-    <p class="instrucoes">
-    <strong>Construir:</strong> Selecione o tipo acima e clique na grama.<br>
-    <strong>Melhorar (Upgrade):</strong> Clique em uma torre já construída (Custo: Nível x $40).
-</p>
+    <!-- CARREGAMENTO DOS SCRIPTS NA ORDEM DE DEPENDÊNCIA -->
+    <script src="Inimigo.js"></script>
+    <script src="PocaTinta.js"></script>
+    <script src="Projetil.js"></script>
+    <script src="Torre.js"></script>
+    <script src="TorreLaser.js"></script>
+    <script src="TorreCaneta.js"></script>
+    <script src="TorreCarimbo.js"></script>
+    <script src="TorreRonin.js"></script>
+    <script src="TorrePingPong.js"></script>
+    <script src="TorreDJNecromante.js"></script>
+    <script src="TorreFinanceira.js"></script>
+    <script src="TorreClerigo.js"></script>
+    <script src="main.js"></script>
 
-    <script src="script.js"></script>
 </body>
+
 </html>
+<!-- Insira no menu-torres -->
+
+
+<!-- Adicione na lista de carregamento de scripts -->
